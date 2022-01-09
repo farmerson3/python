@@ -1,0 +1,61 @@
+最近用Python完成了一个改进后的二分法搜索函数，能返回双键排序后嵌套序列的切片，感觉效果和效率不错，跟大家分享。
+
+输入数据是从Sqlite3数据库查询来的，源库是家谱数据，查询得到的表data4tree,包括字段name,gender,father,ranking,generation,wife,分别是姓名、性别、父亲、排行、世代和配偶。
+
+目标是通过父亲查询，返回其所有子女列表，def findChildren(father，allrecs) -> list。
+
+准备数据的代码如下：
+
+conn = sqlite3.connect('.\FamilyTree.db') 
+curs = conn.cursor()
+fb="南村张氏族谱"     #库中还有其他族谱数据
+curs.execute("SELECT name,gender,father,ranking,generation,wife FROM {tbl} where fb={fb} order by {orderby}".format(tbl='data4tree',orderby='father,ranking'))   #结果双键排序
+allrecs=curs.fetchall()
+conn.close()
+
+结果集allrecs中的数据是由数千个元组组成的列表，每个元组包括姓名、性别、父亲、排行、世代和配偶。列表中的数据先按father排序，father相同的再按排行ranking排序。父亲名字已经过处理，没有重名的。故称双排序。
+
+通常的二分法算法，处理的输入数据都不是嵌套的，且返回的都是找到的元素的起始位置。
+
+当相同元素不止一个时，常用bisect模块的方法bisect_left和bisect_right，获得起始地址，然后再切片得到最终的子女列表。这种方法的效率并不高，尤其数据量很大时。
+
+这里实现的二分法搜索，直接返回需要的子女序列，且效率高。
+
+def findChildren(father，allrecs) -> list:
+   # 先找下限
+    left = 0
+    start=0
+    end=0
+    RIGHT = len(allrecs) - 1
+    right = RIGHT
+    while left < right:
+        mid = (left + right) // 2
+        if father <= allrecs[mid][2]:
+            right = mid
+        else:
+            left = mid + 1
+
+    if father != allrecs[left][2]:
+        return []
+        
+    start=left
+
+    if left == RIGHT:
+        return [allrecs[left:left]]
+
+    # 再找上限
+    right = RIGHT   # left是下限， 在left到RGHT范围中找
+    while left < right:
+        mid = (left + right) // 2 + 1
+        if father >= allrecs[mid][2]:
+            left = mid
+        else:
+            right = mid - 1
+
+    end=right
+
+    return allrecs[start:end+1]   #返回切片
+
+经过timeit测试，该函数的效率明显高于采用bisect模块的方法bisect_left和bisect_right。原因是，找上限索引时，没有重新开始，而是在剩下的数据中查找，自然节省了时间。
+
+使用场景，该函数可以用于家谱数据在TreeView中的显示。通过父亲能够找到，所有子女。
